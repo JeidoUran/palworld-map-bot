@@ -31,7 +31,7 @@ const INTERVAL_MINUTES = Number(process.env.INTERVAL_MINUTES ?? 10);
 // Optionnel: pour matcher exactement l'image "PalworldSaveTools" que tu as jointe
 // Exemple: MAP_IMAGE=../assets/updated_worldmap.png
 const MAP_IMAGE = process.env.MAP_IMAGE;
-
+const OUTPUT_SIZE = 4096;
 // ====== COORDS / CALIBRATION ======
 //
 // 1) world -> map (déduit de tes couples joueurs world<->map)
@@ -257,24 +257,31 @@ function makeLabelSvgSmall(text) {
 async function renderSnapshot({ players, camps }) {
   const { camp, player } = loadIconsOnce();
 
-  // Base image + dimensions
-  const base = sharp(ASSETS.map);
-  const meta = await base.metadata();
-  const W = meta.width ?? 8192;
-  const H = meta.height ?? 8192;
+  // 1) lire la map source
+  const baseSrc = sharp(ASSETS.map);
+  const meta = await baseSrc.metadata();
+  const srcW = meta.width ?? 8192;
+  const srcH = meta.height ?? 8192;
+
+  // 2) créer un canvas base en OUTPUT_SIZE
+  const base = baseSrc.resize(OUTPUT_SIZE, OUTPUT_SIZE, { fit: "fill" });
+
+  // 3) facteur d’échelle coord pixels
+  const sx = OUTPUT_SIZE / srcW;
+  const sy = OUTPUT_SIZE / srcH;
 
   const composites = [];
 
-  // Camps (map_pos -> pixel)
+  // Camps
   for (const c of camps) {
     if (typeof c.map_x !== "number" || typeof c.map_y !== "number") continue;
 
-    const { px, py } = mapToPixel(c.map_x, c.map_y);
-    const size = 18;
+    const { px, py } = mapToPixel(c.map_x, c.map_y); // px/py en repère srcW/srcH (8192)
+    const x = px * sx;
+    const y = py * sy;
 
-    // clamp léger, mais pas trop (pour voir si ça part en vrille)
-    const x = clamp(px, -200, W + 200);
-    const y = clamp(py, -200, H + 200);
+    // IMPORTANT: size doit être en pixels de sortie
+    const size = 18;
 
     composites.push({
       input: camp,
@@ -283,17 +290,17 @@ async function renderSnapshot({ players, camps }) {
     });
   }
 
-  // Players (world_pos -> map_pos -> pixel)
+  // Players
   for (const p of players) {
     const wx = Number(p.location_x ?? 0);
     const wy = Number(p.location_y ?? 0);
     if (!wx && !wy) continue;
 
-    const { px, py } = worldToPixel(wx, wy);
+    const { px, py } = worldToPixel(wx, wy); // px/py en repère srcW/srcH
+    const x = px * sx;
+    const y = py * sy;
 
     const size = 22;
-    const x = clamp(px, -200, W + 200);
-    const y = clamp(py, -200, H + 200);
 
     composites.push({
       input: player,
@@ -301,9 +308,7 @@ async function renderSnapshot({ players, camps }) {
       top: Math.round(y - size / 2),
     });
 
-    const label = p.name ?? p.nickname ?? "Player";
-    const labelSvg = makeLabelSvgSmall(label);
-
+    const labelSvg = makeLabelSvgSmall(p.name ?? p.nickname ?? "Player");
     composites.push({
       input: labelSvg,
       left: Math.round(x + 12),
@@ -311,13 +316,8 @@ async function renderSnapshot({ players, camps }) {
     });
   }
 
-  const OUTPUT_SIZE = 4096;
-
-  // Important: on "force" pas la map en 8192 maintenant,
-  // on respecte son vrai size (meta.width/meta.height).
   return await base
     .composite(composites)
-    .resize(OUTPUT_SIZE, OUTPUT_SIZE, { fit: "cover" })
     .jpeg({ quality: 85, mozjpeg: true })
     .toBuffer();
 }
