@@ -33,6 +33,47 @@ const INTERVAL_MINUTES = Number(process.env.INTERVAL_MINUTES ?? 10);
 // Exemple: MAP_IMAGE=../assets/updated_worldmap.png
 const MAP_IMAGE = process.env.MAP_IMAGE;
 const OUTPUT_SIZE = 4096;
+
+// ====== GUILD COLORS ======
+const GUILD_COLORS = [
+  "#ff0000", // rouge
+  "#3498DB", // bleu
+  "#2ECC71", // vert
+  "#F1C40F", // jaune
+  "#9B59B6", // violet
+  "#E67E22", // orange
+  "#ff21e1", // rose
+  "#95A5A6", // gris
+  "#00ffff", // cyan
+  "#FF5722", // deep orange
+  "#8BC34A", // light green
+  "#5e6f9e", // tailos
+  "#004953", // stratof
+];
+
+function normalizePalId(id) {
+  // guild members: "21FCEE28-00000000-..." vs players: "21FCEE2800000000..."
+  return String(id ?? "").replaceAll("-", "").toLowerCase();
+}
+
+function pickColorForGuild(palGuildId, state) {
+  state.palworld ??= {};
+  state.palworld.guildColors ??= {};
+
+  if (!state.palworld.guildColors[palGuildId]) {
+    const used = new Set(Object.values(state.palworld.guildColors));
+    const available = GUILD_COLORS.filter(c => !used.has(c));
+    const color = available.length
+      ? available[0]
+      : GUILD_COLORS[Math.floor(Math.random() * GUILD_COLORS.length)];
+
+    state.palworld.guildColors[palGuildId] = color;
+    saveState(state);
+  }
+
+  return state.palworld.guildColors[palGuildId];
+}
+
 // ====== COORDS / CALIBRATION ======
 //
 // 1) world -> map (déduit de tes couples joueurs world<->map)
@@ -107,29 +148,40 @@ const ASSETS = {
 
 let iconCache = null;
 
+const tintedCache = {
+  camp: new Map(),   // key: color -> buffer
+  player: new Map(), // key: color -> buffer
+};
+
+async function getTintedIcon(basePath, size, colorHex) {
+  // colorHex => key
+  const key = colorHex.toLowerCase();
+
+  // on choisit quel cache utiliser en fonction du fichier
+  const cache =
+    basePath === ASSETS.camp ? tintedCache.camp :
+    basePath === ASSETS.player ? tintedCache.player :
+    null;
+
+  if (cache && cache.has(key)) return cache.get(key);
+
+  const buf = await sharp(basePath)
+    .resize(size, size, { fit: "fill", kernel: sharp.kernel.nearest })
+    .tint(colorHex) // teinte toute l'icône
+    .png()
+    .toBuffer();
+
+  if (cache) cache.set(key, buf);
+  return buf;
+}
+
 async function loadIconsOnce() {
   if (iconCache) return iconCache;
 
   const CAMP_SIZE = 128;
   const PLAYER_SIZE = 112;
 
-  const camp = await sharp(ASSETS.camp)
-    .resize(CAMP_SIZE, CAMP_SIZE, { fit: "fill", kernel: sharp.kernel.nearest })
-    .png()
-    .toBuffer();
-
-  const player = await sharp(ASSETS.player)
-    .resize(PLAYER_SIZE, PLAYER_SIZE, { fit: "fill", kernel: sharp.kernel.nearest })
-    .png()
-    .toBuffer();
-
-  iconCache = {
-    camp,
-    player,
-    CAMP_SIZE,
-    PLAYER_SIZE,
-  };
-
+  iconCache = { CAMP_SIZE, PLAYER_SIZE };
   return iconCache;
 }
 
@@ -201,10 +253,11 @@ function extractCamps(guildsJson) {
     const g = guildsJson[guildId];
     for (const c of (g.camps ?? [])) {
       camps.push({
+        guild_id: guildId,
         guild: g.name,
+
         camp_id: c.id,
 
-        // ✅ on utilise map_pos directement (c'est notre meilleure vérité)
         map_x: (typeof c.map_pos?.x === "number") ? c.map_pos.x : null,
         map_y: (typeof c.map_pos?.y === "number") ? c.map_pos.y : null,
 
@@ -273,7 +326,7 @@ function makeLabelSvgSmall(text) {
 </svg>`);
 }
 
-async function renderSnapshot({ players, camps }) {
+async function renderSnapshot({ players, camps, playerToGuild, state }) {
   const icons = await loadIconsOnce();
 
   // 1) lire la map source
@@ -295,13 +348,17 @@ async function renderSnapshot({ players, camps }) {
   for (const c of camps) {
     if (typeof c.map_x !== "number" || typeof c.map_y !== "number") continue;
 
-    const { px, py } = mapToPixel(c.map_x, c.map_y); // px/py en repère srcW/srcH (8192)
+    const { px, py } = mapToPixel(c.map_x, c.map_y);
     const x = px * sx;
     const y = py * sy;
 
     const size = icons.CAMP_SIZE;
+
+    const color = pickColorForGuild(c.guild_id ?? "unknown", state);
+    const campIcon = await getTintedIcon(ASSETS.camp, size, color);
+
     composites.push({
-      input: icons.camp,
+      input: campIcon,
       left: Math.round(x - size / 2),
       top: Math.round(y - size / 2),
     });
@@ -313,15 +370,23 @@ async function renderSnapshot({ players, camps }) {
     const wy = Number(p.location_y ?? 0);
     if (!wx && !wy) continue;
 
-    const { px, py } = worldToPixel(wx, wy); // px/py en repère srcW/srcH
+    const { px, py } = worldToPixel(wx, wy);
     const x = px * sx;
     const y = py * sy;
 
     const size = icons.PLAYER_SIZE;
+
+    const pid = normalizePalId(p.playerId ?? p.player_id ?? "");
+    const palGuildId = playerToGuild?.[pid] ?? null;
+
+    // Si pas de guilde trouvée, couleur neutre
+    const color = palGuildId ? pickColorForGuild(palGuildId, state) : "#FFFFFF";
+    const playerIcon = await getTintedIcon(ASSETS.player, size, color);
+
     composites.push({
-      input: icons.player,
+      input: playerIcon,
       left: Math.round(x - size / 2),
-      top: Math.round(y - size),
+      top: Math.round(y - size), // bottom-center (épingle)
     });
 
     const labelSvg = makeLabelSvgSmall(p.name ?? p.nickname ?? "Player");
@@ -377,7 +442,12 @@ async function doUpdateForGuild(guildId, cfg, state, data, { force = false } = {
     return;
   }
 
-  const buf = await renderSnapshot({ players: data.players, camps: data.camps });
+  const buf = await renderSnapshot({
+    players: data.players,
+    camps: data.camps,
+    playerToGuild: data.playerToGuild,
+    state, // <= important: pour persister les couleurs
+  });
   const file = new AttachmentBuilder(buf, { name: "palworld-map.jpg" });
   const embed = makePalmapEmbed({
     playersCount: data.players.length,
@@ -396,6 +466,21 @@ async function doUpdateForGuild(guildId, cfg, state, data, { force = false } = {
   saveState(state);
 }
 
+function buildPlayerToGuildMap(guildsJson) {
+  const map = {};
+  for (const guildId of Object.keys(guildsJson)) {
+    const g = guildsJson[guildId];
+    for (const memberId of (g.members ?? [])) {
+      map[normalizePalId(memberId)] = guildId;
+    }
+    // au cas où, on ajoute aussi l'admin.id (souvent déjà dans members)
+    if (g.admin?.id) {
+      map[normalizePalId(g.admin.id)] = guildId;
+    }
+  }
+  return map;
+}
+
 async function fetchSnapshotData() {
   const playersJson = await fetchPlayers();
   const guildsJson = await fetchGuilds();
@@ -403,10 +488,12 @@ async function fetchSnapshotData() {
   const players = playersJson.players ?? playersJson ?? [];
   const camps = extractCamps(guildsJson);
 
+  const playerToGuild = buildPlayerToGuildMap(guildsJson);
+
   const hashPayload = stableSnapshotForHash(players, camps);
   const hash = sha256(hashPayload);
 
-  return { players, camps, hash };
+  return { players, camps, playerToGuild, guildsJson, hash };
 }
 
 async function tick({ forceGuildId = null } = {}) {
