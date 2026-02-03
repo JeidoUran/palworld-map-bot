@@ -152,7 +152,7 @@ async function loadIconsOnce() {
   if (iconCache) return iconCache;
 
   const CAMP_SIZE = 128;
-  const PLAYER_SIZE = 112;
+  const PLAYER_SIZE = 86;
 
   iconCache = { CAMP_SIZE, PLAYER_SIZE };
   return iconCache;
@@ -269,20 +269,26 @@ function escapeXml(s) {
 
 function makeLabelSvgSmall(text) {
   const t = escapeXml(text);
-  const paddingX = 8;
-  const paddingY = 4;
-  const fontSize = 18;
+  const paddingX = 10;
+  const paddingY = 10;
+  const fontSize = 26;
 
-  const textWidth = Math.max(60, t.length * 7);
+  // estimation simple (ok pour Arial)
+  const textWidth = Math.max(90, t.length * 9);
   const w = textWidth + paddingX * 2;
   const h = fontSize + paddingY * 2 + 2;
 
-  return Buffer.from(`
+  const svg = Buffer.from(`
 <svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
-  <rect x="0" y="0" width="${w}" height="${h}" rx="6" ry="6" fill="rgba(0,0,0,0.75)"/>
-  <text x="${paddingX}" y="${fontSize + paddingY}" font-family="Arial, sans-serif"
-        font-size="${fontSize}" font-weight="bold" fill="white">${t}</text>
+  <rect x="0" y="0" width="${w}" height="${h}" rx="8" ry="8" fill="rgba(0,0,0,0.75)"/>
+  <text x="${paddingX}" y="${fontSize + paddingY}"
+        font-family="Arial, sans-serif"
+        font-size="${fontSize}"
+        font-weight="700"
+        fill="white">${t}</text>
 </svg>`);
+
+  return { buf: svg, w, h };
 }
 
 function hexToRgb(hex) {
@@ -331,7 +337,7 @@ function makeLegendSvg(legendGuilds, scale = 1) {
   <g transform="scale(${scale})">
     <rect x="0" y="0" width="${w}" height="${h}" rx="14" ry="14" fill="rgba(0,0,0,0.55)"/>
     <text x="${pad}" y="${pad + 18}" font-family="Arial, sans-serif"
-          font-size="16" font-weight="800" fill="white">Guildes (bases)</text>
+          font-size="16" font-weight="800" fill="white">Guildes (Bases)</text>
     ${rows}
   </g>
 </svg>`),
@@ -402,11 +408,12 @@ async function renderSnapshot({ players, camps, playerToGuild, legendGuilds, sta
       top: Math.round(y - size), // bottom-center (épingle)
     });
 
-    const labelSvg = makeLabelSvgSmall(p.name ?? p.nickname ?? "Player");
+    const label = makeLabelSvgSmall(p.name ?? p.nickname ?? "Player");
+
     composites.push({
-      input: labelSvg,
-      left: Math.round(x + 12),
-      top: Math.round(y - 56),
+      input: label.buf,
+      left: Math.round(x - label.w / 2),  // ✅ centré sur x
+      top: Math.round(y - size - label.h - 8), // ✅ juste au-dessus de l'épingle
     });
   }
 
