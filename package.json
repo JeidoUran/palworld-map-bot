@@ -1,0 +1,15 @@
+{
+  "name": "palworld-map-bot",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "deploy": "node src/deploy-commands.js",
+    "start": "node src/bot.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.25.1",
+    "dotenv": "^17.2.3",
+    "sharp": "^0.34.5"
+  },
+  "packageManager": "yarn@4.12.0"
+}
