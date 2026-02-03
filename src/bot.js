@@ -10,7 +10,7 @@ import {
   GatewayIntentBits,
   AttachmentBuilder,
   ChannelType,
-  Events
+  Events,
 } from "discord.js";
 
 import sharp from "sharp";
@@ -55,7 +55,9 @@ const GUILD_COLORS = [
 
 function normalizePalId(id) {
   // guild members: "21FCEE28-00000000-..." vs players: "21FCEE2800000000..."
-  return String(id ?? "").replaceAll("-", "").toLowerCase();
+  return String(id ?? "")
+    .replaceAll("-", "")
+    .toLowerCase();
 }
 
 function pickColorForGuild(palGuildId, state) {
@@ -64,7 +66,7 @@ function pickColorForGuild(palGuildId, state) {
 
   if (!state.palworld.guildColors[palGuildId]) {
     const used = new Set(Object.values(state.palworld.guildColors));
-    const available = GUILD_COLORS.filter(c => !used.has(c));
+    const available = GUILD_COLORS.filter((c) => !used.has(c));
     const color = available.length
       ? available[0]
       : GUILD_COLORS[Math.floor(Math.random() * GUILD_COLORS.length)];
@@ -124,7 +126,7 @@ const ASSETS = {
 let iconCache = null;
 
 const tintedCache = {
-  camp: new Map(),   // key: color -> buffer
+  camp: new Map(), // key: color -> buffer
   player: new Map(), // key: color -> buffer
 };
 
@@ -132,9 +134,11 @@ async function getTintedIcon(basePath, size, colorHex) {
   const key = colorHex.toLowerCase();
 
   const cache =
-    basePath === ASSETS.camp ? tintedCache.camp :
-    basePath === ASSETS.player ? tintedCache.player :
-    null;
+    basePath === ASSETS.camp
+      ? tintedCache.camp
+      : basePath === ASSETS.player
+        ? tintedCache.player
+        : null;
 
   if (cache && cache.has(key)) return cache.get(key);
 
@@ -211,15 +215,15 @@ function extractCamps(guildsJson) {
   const camps = [];
   for (const guildId of Object.keys(guildsJson)) {
     const g = guildsJson[guildId];
-    for (const c of (g.camps ?? [])) {
+    for (const c of g.camps ?? []) {
       camps.push({
         guild_id: guildId,
         guild: g.name,
 
         camp_id: c.id,
 
-        map_x: (typeof c.map_pos?.x === "number") ? c.map_pos.x : null,
-        map_y: (typeof c.map_pos?.y === "number") ? c.map_pos.y : null,
+        map_x: typeof c.map_pos?.x === "number" ? c.map_pos.x : null,
+        map_y: typeof c.map_pos?.y === "number" ? c.map_pos.y : null,
 
         world_x: c.world_pos?.x ?? null,
         world_y: c.world_pos?.y ?? null,
@@ -232,7 +236,7 @@ function extractCamps(guildsJson) {
 // ====== HASH (no change = no edit) ======
 function stableSnapshotForHash(players, camps) {
   const p = (players ?? [])
-    .map(x => ({
+    .map((x) => ({
       id: x.playerId ?? x.userId ?? x.name ?? "",
       name: x.name ?? x.nickname ?? "",
       x: Number(x.location_x ?? 0),
@@ -241,7 +245,7 @@ function stableSnapshotForHash(players, camps) {
     .sort((a, b) => (a.id || a.name).localeCompare(b.id || b.name));
 
   const c = (camps ?? [])
-    .map(x => ({
+    .map((x) => ({
       id: x.camp_id ?? "",
       guild: x.guild ?? "",
       mx: Number(x.map_x ?? 0),
@@ -292,7 +296,9 @@ function makeLabelSvgSmall(text) {
 }
 
 function hexToRgb(hex) {
-  const h = String(hex ?? "").replace("#", "").trim();
+  const h = String(hex ?? "")
+    .replace("#", "")
+    .trim();
   if (h.length !== 6) return { r: 255, g: 255, b: 255 };
   return {
     r: parseInt(h.slice(0, 2), 16),
@@ -311,21 +317,23 @@ function makeLegendSvg(legendGuilds, scale = 1) {
   const w = 340;
   const h = pad * 2 + titleH + legendGuilds.length * rowH;
 
-  const rows = legendGuilds.map((g, i) => {
-    const y = pad + titleH + i * rowH + 18;
+  const rows = legendGuilds
+    .map((g, i) => {
+      const y = pad + titleH + i * rowH + 18;
 
-    const { r, g: gg, b } = hexToRgb(g.color);
-    const name = escapeXml(g.name ?? "Guild");
-    const count = Number(g.campCount ?? 0);
+      const { r, g: gg, b } = hexToRgb(g.color);
+      const name = escapeXml(g.name ?? "Guild");
+      const count = Number(g.campCount ?? 0);
 
-    return `
+      return `
       <circle cx="${pad + dotR}" cy="${y - 6}" r="${dotR}" fill="rgb(${r},${gg},${b})" />
       <text x="${pad + dotR * 2 + 10}" y="${y}" font-family="Arial, sans-serif"
             font-size="16" font-weight="700" fill="white">${name}</text>
       <text x="${w - pad}" y="${y}" text-anchor="end" font-family="Arial, sans-serif"
             font-size="16" font-weight="700" fill="white">${count}</text>
     `;
-  }).join("\n");
+    })
+    .join("\n");
 
   // SVG final: on scale tout le contenu (sans flou)
   const scaledW = Math.round(w * scale);
@@ -346,7 +354,13 @@ function makeLegendSvg(legendGuilds, scale = 1) {
   };
 }
 
-async function renderSnapshot({ players, camps, playerToGuild, legendGuilds, state }) {
+async function renderSnapshot({
+  players,
+  camps,
+  playerToGuild,
+  legendGuilds,
+  state,
+}) {
   const icons = await loadIconsOnce();
 
   // 1) lire la map source
@@ -412,14 +426,18 @@ async function renderSnapshot({ players, camps, playerToGuild, legendGuilds, sta
 
     composites.push({
       input: label.buf,
-      left: Math.round(x - label.w / 2),  // ✅ centré sur x
+      left: Math.round(x - label.w / 2), // ✅ centré sur x
       top: Math.round(y - size - label.h - 8), // ✅ juste au-dessus de l'épingle
     });
   }
 
   // Legend (bottom-right)
   if (Array.isArray(legendGuilds) && legendGuilds.length) {
-    const { buf: legendSvg, w: legendW, h: legendH } = makeLegendSvg(legendGuilds, LEGEND_SCALE);
+    const {
+      buf: legendSvg,
+      w: legendW,
+      h: legendH,
+    } = makeLegendSvg(legendGuilds, LEGEND_SCALE);
 
     composites.push({
       input: legendSvg,
@@ -460,7 +478,13 @@ async function ensureMessage(channel, guildId, state) {
   return msg;
 }
 
-async function doUpdateForGuild(guildId, cfg, state, data, { force = false } = {}) {
+async function doUpdateForGuild(
+  guildId,
+  cfg,
+  state,
+  data,
+  { force = false } = {},
+) {
   const guild = await client.guilds.fetch(guildId).catch(() => null);
   if (!guild) return;
 
@@ -503,7 +527,7 @@ function buildPlayerToGuildMap(guildsJson) {
   const map = {};
   for (const guildId of Object.keys(guildsJson)) {
     const g = guildsJson[guildId];
-    for (const memberId of (g.members ?? [])) {
+    for (const memberId of g.members ?? []) {
       map[normalizePalId(memberId)] = guildId;
     }
     if (g.admin?.id) {
@@ -532,8 +556,8 @@ async function fetchSnapshotData() {
       campCount: g.camp_count ?? 0,
       color: pickColorForGuild(gid, state),
     }))
-    .filter(g => g.campCount > 0)
-    .sort((a, b) => (b.campCount - a.campCount) || a.name.localeCompare(b.name));
+    .filter((g) => g.campCount > 0)
+    .sort((a, b) => b.campCount - a.campCount || a.name.localeCompare(b.name));
 
   // ⚠️ pickColorForGuild peut avoir modifié le state (persist),
   // donc on resave au cas où (même si pickColorForGuild le fait déjà)
@@ -565,7 +589,7 @@ async function tick({ forceGuildId = null } = {}) {
 
       await doUpdateForGuild(guildId, cfg, freshState, data, {
         force: forceGuildId === guildId,
-      }).catch(err => console.error(`Update error guild ${guildId}:`, err));
+      }).catch((err) => console.error(`Update error guild ${guildId}:`, err));
     }
   } catch (err) {
     console.error("Tick error:", err);
@@ -577,11 +601,11 @@ async function tick({ forceGuildId = null } = {}) {
 function makePalmapEmbed({ playersCount, campsCount, force = false }) {
   return new EmbedBuilder()
     .setTitle("🗺️ Memiroa — Live Map")
-    .setColor(playersCount > 0 ? 0x3BA55D : 0x747F8D)
+    .setColor(playersCount > 0 ? 0x3ba55d : 0x747f8d)
     .addFields(
       { name: "Joueurs", value: `${playersCount}/20`, inline: true },
       { name: "Bases", value: `${campsCount}`, inline: true },
-      { name: "\u200B", value: "\u200B", inline: true }
+      { name: "\u200B", value: "\u200B", inline: true },
     )
     .setFooter({ text: "Memiroa Bot • Mise à jour automatique" })
     .setTimestamp(new Date());
@@ -596,7 +620,10 @@ client.on("interactionCreate", async (interaction) => {
   const guildId = interaction.guildId;
 
   if (!guildId) {
-    await interaction.reply({ content: "Cette commande doit être utilisée dans un serveur.", ephemeral: true });
+    await interaction.reply({
+      content: "Cette commande doit être utilisée dans un serveur.",
+      ephemeral: true,
+    });
     return;
   }
 
@@ -608,7 +635,10 @@ client.on("interactionCreate", async (interaction) => {
     const channel = interaction.options.getChannel("channel", true);
 
     if (channel.type !== ChannelType.GuildText) {
-      await interaction.reply({ content: "Je peux seulement poster dans un canal texte (GuildText).", ephemeral: true });
+      await interaction.reply({
+        content: "Je peux seulement poster dans un canal texte (GuildText).",
+        ephemeral: true,
+      });
       return;
     }
 
@@ -621,7 +651,7 @@ client.on("interactionCreate", async (interaction) => {
 
     await interaction.reply({
       content: `✅ Ok, j’attache la live-map à ${channel}.\nJe poste/édite un seul message dans ce canal.`,
-      ephemeral: true
+      ephemeral: true,
     });
 
     await tick({ forceGuildId: guildId });
@@ -637,7 +667,7 @@ client.on("interactionCreate", async (interaction) => {
       content: had
         ? "🧹 Live-map détachée pour ce serveur. Je n’éditerai plus rien."
         : "Il n’y avait pas de live-map attachée sur ce serveur.",
-      ephemeral: true
+      ephemeral: true,
     });
     return;
   }
@@ -645,13 +675,18 @@ client.on("interactionCreate", async (interaction) => {
   if (sub === "status") {
     const cfg = state.guilds[guildId];
     if (!cfg?.channelId) {
-      await interaction.reply({ content: "Aucune live-map attachée sur ce serveur.", ephemeral: true });
+      await interaction.reply({
+        content: "Aucune live-map attachée sur ce serveur.",
+        ephemeral: true,
+      });
       return;
     }
-    const when = cfg.lastUpdatedAt ? new Date(cfg.lastUpdatedAt).toLocaleString("fr-FR") : "jamais";
+    const when = cfg.lastUpdatedAt
+      ? new Date(cfg.lastUpdatedAt).toLocaleString("fr-FR")
+      : "jamais";
     await interaction.reply({
       content: `📌 Live-map attachée à <#${cfg.channelId}>\n🧾 Message ID: ${cfg.messageId ?? "pas encore créé"}\n⏱️ Dernier update: ${when}`,
-      ephemeral: true
+      ephemeral: true,
     });
     return;
   }
@@ -659,11 +694,18 @@ client.on("interactionCreate", async (interaction) => {
   if (sub === "force") {
     const cfg = state.guilds[guildId];
     if (!cfg?.channelId) {
-      await interaction.reply({ content: "Aucune live-map attachée. Fais \`/palmap add #canal\` d’abord.", ephemeral: true });
+      await interaction.reply({
+        content:
+          "Aucune live-map attachée. Fais \`/palmap add #canal\` d’abord.",
+        ephemeral: true,
+      });
       return;
     }
 
-    await interaction.reply({ content: "⚡ Update forcé en cours…", ephemeral: true });
+    await interaction.reply({
+      content: "⚡ Update forcé en cours…",
+      ephemeral: true,
+    });
     await tick({ forceGuildId: guildId });
     return;
   }
