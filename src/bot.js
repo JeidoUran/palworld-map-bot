@@ -386,7 +386,7 @@ async function doUpdateForGuild(guildId, cfg, state, data, { force = false } = {
   });
 
   await msg.edit({
-    content: formatHeader(
+    content: "",
     embeds: [embed],
     files: [file],
   });
