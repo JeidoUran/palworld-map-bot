@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { EmbedBuilder } from "discord.js";
 
 import {
   Client,
@@ -338,12 +339,6 @@ async function renderSnapshot({ players, camps }) {
 }
 
 // ====== DISCORD HELPERS ======
-function formatHeader(playersCount, campsCount, note = "") {
-  const ts = new Date().toLocaleString("fr-FR");
-  const extra = note ? `\n${note}` : "";
-  return `🗺️ **Palworld — Snapshot**\n🧍 Joueurs: **${playersCount}** • 🏕️ Camps: **${campsCount}**\n⏱️ Dernière mise à jour: **${ts}**${extra}`;
-}
-
 const client = new Client({
   intents: [GatewayIntentBits.Guilds],
 });
@@ -384,13 +379,15 @@ async function doUpdateForGuild(guildId, cfg, state, data, { force = false } = {
 
   const buf = await renderSnapshot({ players: data.players, camps: data.camps });
   const file = new AttachmentBuilder(buf, { name: "palworld-map.jpg" });
+  const embed = makePalmapEmbed({
+    playersCount: data.players.length,
+    campsCount: data.camps.length,
+    force,
+  });
 
   await msg.edit({
     content: formatHeader(
-      data.players.length,
-      data.camps.length,
-      force ? "⚡ Update forcé" : ""
-    ),
+    embeds: [embed],
     files: [file],
   });
 
@@ -438,6 +435,31 @@ async function tick({ forceGuildId = null } = {}) {
   }
 }
 
+function makePalmapEmbed({ playersCount, campsCount, force = false }) {
+  return new EmbedBuilder()
+    .setTitle("🗺️ Memiroa — Live Map")
+    .setColor(playersCount > 0 ? 0x3BA55D : 0x747F8D)
+    .addFields(
+      {
+        name: "Joueurs",
+        value: `${playersCount}/20`,
+        inline: true,
+      },
+      {
+        name: "Bases",
+        value: `${campsCount}`,
+        inline: true,
+      },
+      {
+        name: "\u200B", // spacer invisible pour bien centrer sur desktop
+        value: "\u200B",
+        inline: true,
+      }
+    )
+    .setFooter({ text: "Memiroa Bot • Mise à jour automatique" })
+    .setTimestamp(new Date());
+}
+
 // ====== SLASH COMMANDS ======
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
@@ -471,7 +493,7 @@ client.on("interactionCreate", async (interaction) => {
     saveState(state);
 
     await interaction.reply({
-      content: `✅ Ok, j’attache la live-map à ${channel}.\nJe poste/édite **un seul message** dans ce canal.`,
+      content: `✅ Ok, j’attache la live-map à ${channel}.\nJe poste/édite un seul message dans ce canal.`,
       ephemeral: true
     });
 
