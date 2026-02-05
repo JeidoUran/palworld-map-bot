@@ -325,6 +325,18 @@ async function makeLabelSvg(text, {
   return out;
 }
 
+function hexToRgb(hex) {
+  const h = String(hex ?? "")
+    .replace("#", "")
+    .trim();
+  if (h.length !== 6) return { r: 255, g: 255, b: 255 };
+  return {
+    r: parseInt(h.slice(0, 2), 16),
+    g: parseInt(h.slice(2, 4), 16),
+    b: parseInt(h.slice(4, 6), 16),
+  };
+}
+
 function makeLegendSvg(legendGuilds, scale = 1) {
   // layout base (avant scale)
   const pad = 14;
