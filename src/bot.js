@@ -271,40 +271,58 @@ function escapeXml(s) {
     .replaceAll("'", "&apos;");
 }
 
-function makeLabelSvgSmall(text) {
-  const t = escapeXml(text);
-  const paddingX = 10;
-  const paddingY = 10;
-  const fontSize = 26;
+// ====== LABELS (accurate sizing via Sharp) ======
+const labelCache = new Map(); // key: text -> { buf,w,h }
 
-  // estimation simple (ok pour Arial)
-  const textWidth = Math.max(90, t.length * 9);
-  const w = textWidth + paddingX * 2;
-  const h = fontSize + paddingY * 2 + 2;
+async function makeLabelSvg(text, {
+  fontSize = 26,
+  paddingX = 12,
+  paddingY = 10,
+  radius = 8,
+  bg = "rgba(0,0,0,0.75)",
+  fontFamily = "Arial, sans-serif",
+  fontWeight = 700,
+} = {}) {
+  const t = escapeXml(text ?? "");
+  const cacheKey = `${fontSize}|${paddingX}|${paddingY}|${radius}|${t}`;
+  const cached = labelCache.get(cacheKey);
+  if (cached) return cached;
 
-  const svg = Buffer.from(`
-<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
-  <rect x="0" y="0" width="${w}" height="${h}" rx="8" ry="8" fill="rgba(0,0,0,0.75)"/>
-  <text x="${paddingX}" y="${fontSize + paddingY}"
-        font-family="Arial, sans-serif"
+  // 1) Rendu “large” pour mesurer le texte, puis trim pour obtenir la bbox réelle
+  const measureSvg = Buffer.from(`
+<svg width="1200" height="200" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="200" fill="rgba(0,0,0,0)"/>
+  <text x="0" y="${Math.round(fontSize * 1.1)}"
+        font-family="${fontFamily}"
         font-size="${fontSize}"
-        font-weight="700"
+        font-weight="${fontWeight}"
         fill="white">${t}</text>
 </svg>`);
 
-  return { buf: svg, w, h };
-}
+  const measured = await sharp(measureSvg).png().trim().toBuffer({ resolveWithObject: true });
+  const textW = measured.info.width;
+  const textH = measured.info.height;
 
-function hexToRgb(hex) {
-  const h = String(hex ?? "")
-    .replace("#", "")
-    .trim();
-  if (h.length !== 6) return { r: 255, g: 255, b: 255 };
-  return {
-    r: parseInt(h.slice(0, 2), 16),
-    g: parseInt(h.slice(2, 4), 16),
-    b: parseInt(h.slice(4, 6), 16),
-  };
+  // 2) Dimensions finales avec padding
+  const w = textW + paddingX * 2;
+  const h = textH + paddingY * 2;
+
+  // 3) SVG final centré (texte + fond)
+  const finalSvg = Buffer.from(`
+<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="${w}" height="${h}" rx="${radius}" ry="${radius}" fill="${bg}"/>
+  <text x="${w / 2}" y="${h / 2}"
+        text-anchor="middle"
+        dominant-baseline="middle"
+        font-family="${fontFamily}"
+        font-size="${fontSize}"
+        font-weight="${fontWeight}"
+        fill="white">${t}</text>
+</svg>`);
+
+  const out = { buf: finalSvg, w, h };
+  labelCache.set(cacheKey, out);
+  return out;
 }
 
 function makeLegendSvg(legendGuilds, scale = 1) {
@@ -422,7 +440,13 @@ async function renderSnapshot({
       top: Math.round(y - size), // bottom-center (épingle)
     });
 
-    const label = makeLabelSvgSmall(p.name ?? p.nickname ?? "Player");
+    const label = await makeLabelSvg(p.name ?? p.nickname ?? "Player");
+
+    composites.push({
+      input: label.buf,
+      left: Math.round(x - label.w / 2),          // centré au-dessus du joueur
+      top: Math.round(y - size - label.h - 8),    // juste au-dessus de l'épingle
+    });
 
     composites.push({
       input: label.buf,
